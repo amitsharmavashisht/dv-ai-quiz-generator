@@ -168,141 +168,156 @@ def option_letters(count: int):
 
 
 def copy_html_button(html_output: str):
-    """Render a one-click button that copies the complete generated HTML."""
+    """Render a one-click button that copies the complete generated HTML.
 
-    # json.dumps safely transports the complete HTML, including Hindi/Unicode,
-    # quotes, newlines, backslashes, CSS and JavaScript, into the component.
+    Uses Streamlit's current st.html API instead of an iframe. This keeps the
+    button in the main page so the browser Clipboard API can work on both
+    localhost and Streamlit Cloud HTTPS pages.
+    """
+
     html_json = json.dumps(html_output, ensure_ascii=False)
 
     component_html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
+<div class="copy-html-wrap">
+    <button id="copy-html-button" type="button" class="copy-html-button">
+        📋 Copy HTML Code
+    </button>
+    <div id="copy-html-status" class="copy-html-status" aria-live="polite"></div>
+</div>
+
 <style>
-    * {{
-        box-sizing: border-box;
-    }}
-
-    html, body {{
-        margin: 0;
-        padding: 0;
-        background: transparent;
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system,
-                     BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }}
-
-    .copy-btn {{
-        width: 100%;
-        min-height: 42px;
-        padding: 10px 16px;
-        border: 0;
-        border-radius: 12px;
-        background: linear-gradient(135deg, #635bff, #7a65ef);
-        color: #fff;
-        font-size: 14px;
-        font-weight: 700;
-        cursor: pointer;
-        transition: transform .15s ease, box-shadow .15s ease;
-        box-shadow: 0 8px 20px rgba(99, 91, 255, .18);
-    }}
-
-    .copy-btn:hover {{
-        transform: translateY(-1px);
-        box-shadow: 0 10px 24px rgba(99, 91, 255, .25);
-    }}
-
-    .copy-btn:active {{
-        transform: translateY(0);
-    }}
-
-    .copy-btn.success {{
-        background: linear-gradient(135deg, #15966a, #20b77d);
-    }}
-
-    .copy-btn.error {{
-        background: linear-gradient(135deg, #e05252, #c83d3d);
-    }}
-</style>
-</head>
-<body>
-
-<button id="copyButton" class="copy-btn" type="button">
-    📋 Copy HTML Code
-</button>
-
-<script>
-"use strict";
-
-const htmlOutput = {html_json};
-const button = document.getElementById("copyButton");
-
-async function copyText(text) {{
-    // Preferred method.
-    if (navigator.clipboard && window.isSecureContext) {{
-        await navigator.clipboard.writeText(text);
-        return;
-    }}
-
-    // Fallback for browsers/environments where Clipboard API is unavailable.
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.setAttribute("readonly", "");
-    textarea.style.position = "fixed";
-    textarea.style.left = "-999999px";
-    textarea.style.top = "0";
-    textarea.style.opacity = "0";
-
-    document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
-    textarea.setSelectionRange(0, textarea.value.length);
-
-    const ok = document.execCommand("copy");
-    document.body.removeChild(textarea);
-
-    if (!ok) {{
-        throw new Error("Browser rejected the clipboard operation.");
-    }}
+.copy-html-wrap {{
+    width: 100%;
+    margin: 0;
 }}
 
-button.addEventListener("click", async function() {{
-    const original = button.textContent;
+.copy-html-button {{
+    width: 100%;
+    min-height: 46px;
+    padding: 11px 18px;
+    border: 0;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #635bff, #7a65ef);
+    color: #ffffff;
+    font: 700 14px/1.2 Inter, ui-sans-serif, system-ui, -apple-system,
+          BlinkMacSystemFont, "Segoe UI", sans-serif;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(99, 91, 255, .18);
+    transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+}}
 
-    try {{
-        await copyText(htmlOutput);
+.copy-html-button:hover {{
+    transform: translateY(-1px);
+    box-shadow: 0 11px 25px rgba(99, 91, 255, .25);
+}}
 
-        button.textContent = "✅ HTML Copied!";
-        button.classList.add("success");
+.copy-html-button:active {{
+    transform: translateY(0);
+}}
 
-        window.setTimeout(function() {{
-            button.textContent = original;
-            button.classList.remove("success");
-        }}, 2000);
+.copy-html-button.success {{
+    background: linear-gradient(135deg, #15966a, #20b77d);
+}}
 
-    }} catch (error) {{
-        console.error("Copy HTML failed:", error);
+.copy-html-button.error {{
+    background: linear-gradient(135deg, #e05252, #c83d3d);
+}}
 
-        button.textContent = "❌ Copy Failed";
-        button.classList.add("error");
+.copy-html-status {{
+    min-height: 18px;
+    margin-top: 5px;
+    text-align: center;
+    font: 600 11px/1.3 Inter, ui-sans-serif, system-ui, sans-serif;
+    color: #15966a;
+}}
+</style>
 
-        window.setTimeout(function() {{
-            button.textContent = original;
-            button.classList.remove("error");
-        }}, 2500);
+<script>
+(function() {{
+    "use strict";
+
+    const htmlOutput = {html_json};
+    const button = document.getElementById("copy-html-button");
+    const status = document.getElementById("copy-html-status");
+
+    if (!button || !status) return;
+
+    async function copyText(text) {{
+        // Modern Clipboard API. Streamlit Cloud is HTTPS, and localhost is
+        // also treated as a secure context by modern browsers.
+        if (navigator.clipboard && window.isSecureContext) {{
+            await navigator.clipboard.writeText(text);
+            return;
+        }}
+
+        // Fallback for browsers where navigator.clipboard is unavailable.
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        textarea.style.top = "0";
+        textarea.style.width = "1px";
+        textarea.style.height = "1px";
+        textarea.style.opacity = "0";
+
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        textarea.setSelectionRange(0, textarea.value.length);
+
+        const copied = document.execCommand("copy");
+        document.body.removeChild(textarea);
+
+        if (!copied) {{
+            throw new Error("The browser rejected the copy operation.");
+        }}
     }}
-}});
-</script>
 
-</body>
-</html>
+    button.addEventListener("click", async function() {{
+        const originalText = "📋 Copy HTML Code";
+
+        button.disabled = true;
+        button.textContent = "⏳ Copying...";
+        button.classList.remove("success", "error");
+        status.textContent = "";
+
+        try {{
+            await copyText(htmlOutput);
+
+            button.textContent = "✅ HTML Copied!";
+            button.classList.add("success");
+            status.textContent = "Complete HTML code copied to your clipboard.";
+
+            window.setTimeout(function() {{
+                button.textContent = originalText;
+                button.classList.remove("success");
+                button.disabled = false;
+                status.textContent = "";
+            }}, 2200);
+        }} catch (error) {{
+            console.error("Copy HTML failed:", error);
+
+            button.textContent = "❌ Copy Failed";
+            button.classList.add("error");
+            status.textContent = "Copy was blocked by the browser. Use the HTML Source box below.";
+
+            window.setTimeout(function() {{
+                button.textContent = originalText;
+                button.classList.remove("error");
+                button.disabled = false;
+            }}, 3500);
+        }}
+    }});
+}})();
+</script>
 """
 
-    # st.iframe is the current Streamlit API for inline HTML/JS components.
-    st.iframe(
-        src=component_html,
-        height=50,
-        scrolling=False,
+    # Streamlit's current st.html API can execute trusted JavaScript when
+    # explicitly enabled. Unlike an iframe, this runs in the main page.
+    st.html(
+        component_html,
+        unsafe_allow_javascript=True,
     )
 
 
@@ -1390,11 +1405,17 @@ if quiz_data:
     with action_col2:
         copy_html_button(html_output)
 
-    with st.expander("📋 View HTML Source"):
+    with st.expander("📋 View HTML Source", expanded=False):
+        st.markdown(
+            f"**Generated HTML:** `{len(html_output):,}` characters · "
+            f"Scroll inside the code viewer to inspect the complete file."
+        )
         st.code(
             html_output,
             language="html",
-            line_numbers=False,
+            line_numbers=True,
+            wrap_lines=False,
+            height=650,
         )
 
     with st.expander("🔍 Preview generated quiz data"):
