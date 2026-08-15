@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import html
 import json
 import sys
@@ -168,98 +169,149 @@ def option_letters(count: int):
 
 
 def copy_html_button(html_output: str):
-    """Render a one-click button that copies the complete generated HTML.
+    """Render a reliable HTML-copy button using a JavaScript iframe component.
 
-    Uses Streamlit's current st.html API instead of an iframe. This keeps the
-    button in the main page so the browser Clipboard API can work on both
-    localhost and Streamlit Cloud HTTPS pages.
+    Streamlit's st.html sanitizes HTML and is not the right API for executing
+    JavaScript. The v1 HTML component runs the button inside an iframe where
+    the click handler can execute. This is intentionally used here for the
+    browser-side clipboard operation.
     """
+    import streamlit.components.v1 as components
 
-    html_json = json.dumps(html_output, ensure_ascii=False)
+    encoded = base64.b64encode(html_output.encode("utf-8")).decode("ascii")
 
     component_html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    html, body {{
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        overflow: hidden;
+    }}
+
+    .copy-html-wrap {{
+        width: 100%;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system,
+                     BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }}
+
+    .copy-html-button {{
+        width: 100%;
+        min-height: 46px;
+        padding: 11px 18px;
+        border: 0;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #635bff, #7a65ef);
+        color: #fff;
+        font: 700 14px/1.2 inherit;
+        cursor: pointer;
+        box-shadow: 0 8px 20px rgba(99, 91, 255, .18);
+        transition: transform .15s ease, box-shadow .15s ease,
+                    background .15s ease;
+    }}
+
+    .copy-html-button:hover {{
+        transform: translateY(-1px);
+        box-shadow: 0 11px 25px rgba(99, 91, 255, .25);
+    }}
+
+    .copy-html-button:active {{
+        transform: translateY(0);
+    }}
+
+    .copy-html-button:disabled {{
+        cursor: wait;
+        opacity: .9;
+    }}
+
+    .copy-html-button.success {{
+        background: linear-gradient(135deg, #15966a, #20b77d);
+    }}
+
+    .copy-html-button.error {{
+        background: linear-gradient(135deg, #e05252, #c83d3d);
+    }}
+
+    .copy-html-status {{
+        height: 18px;
+        margin-top: 4px;
+        text-align: center;
+        font: 600 11px/18px inherit;
+        color: #15966a;
+    }}
+</style>
+</head>
+<body>
 <div class="copy-html-wrap">
     <button id="copy-html-button" type="button" class="copy-html-button">
         📋 Copy HTML Code
     </button>
-    <div id="copy-html-status" class="copy-html-status" aria-live="polite"></div>
+    <div id="copy-html-status" class="copy-html-status"></div>
 </div>
-
-<style>
-.copy-html-wrap {{
-    width: 100%;
-    margin: 0;
-}}
-
-.copy-html-button {{
-    width: 100%;
-    min-height: 46px;
-    padding: 11px 18px;
-    border: 0;
-    border-radius: 12px;
-    background: linear-gradient(135deg, #635bff, #7a65ef);
-    color: #ffffff;
-    font: 700 14px/1.2 Inter, ui-sans-serif, system-ui, -apple-system,
-          BlinkMacSystemFont, "Segoe UI", sans-serif;
-    cursor: pointer;
-    box-shadow: 0 8px 20px rgba(99, 91, 255, .18);
-    transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
-}}
-
-.copy-html-button:hover {{
-    transform: translateY(-1px);
-    box-shadow: 0 11px 25px rgba(99, 91, 255, .25);
-}}
-
-.copy-html-button:active {{
-    transform: translateY(0);
-}}
-
-.copy-html-button.success {{
-    background: linear-gradient(135deg, #15966a, #20b77d);
-}}
-
-.copy-html-button.error {{
-    background: linear-gradient(135deg, #e05252, #c83d3d);
-}}
-
-.copy-html-status {{
-    min-height: 18px;
-    margin-top: 5px;
-    text-align: center;
-    font: 600 11px/1.3 Inter, ui-sans-serif, system-ui, sans-serif;
-    color: #15966a;
-}}
-</style>
 
 <script>
 (function() {{
     "use strict";
 
-    const htmlOutput = {html_json};
+    const encoded = "{encoded}";
     const button = document.getElementById("copy-html-button");
     const status = document.getElementById("copy-html-status");
 
-    if (!button || !status) return;
+    function decodeUtf8(base64Text) {{
+        const binary = atob(base64Text);
+        const bytes = new Uint8Array(binary.length);
 
-    async function copyText(text) {{
-        // Modern Clipboard API. Streamlit Cloud is HTTPS, and localhost is
-        // also treated as a secure context by modern browsers.
-        if (navigator.clipboard && window.isSecureContext) {{
-            await navigator.clipboard.writeText(text);
-            return;
+        for (let i = 0; i < binary.length; i++) {{
+            bytes[i] = binary.charCodeAt(i);
         }}
 
-        // Fallback for browsers where navigator.clipboard is unavailable.
+        return new TextDecoder("utf-8").decode(bytes);
+    }}
+
+    const htmlOutput = decodeUtf8(encoded);
+
+    async function copyText(text) {{
+        // First try the parent Streamlit page. This is the most reliable
+        // route when the component iframe has clipboard access.
+        try {{
+            if (
+                window.parent &&
+                window.parent.navigator &&
+                window.parent.navigator.clipboard &&
+                window.parent.isSecureContext
+            ) {{
+                await window.parent.navigator.clipboard.writeText(text);
+                return;
+            }}
+        }} catch (e) {{
+            console.warn("Parent clipboard unavailable:", e);
+        }}
+
+        // Then try the component iframe's clipboard.
+        try {{
+            if (navigator.clipboard && window.isSecureContext) {{
+                await navigator.clipboard.writeText(text);
+                return;
+            }}
+        }} catch (e) {{
+            console.warn("Iframe clipboard unavailable:", e);
+        }}
+
+        // Final fallback: execCommand('copy') from the actual button click.
         const textarea = document.createElement("textarea");
         textarea.value = text;
         textarea.setAttribute("readonly", "");
         textarea.style.position = "fixed";
-        textarea.style.left = "-9999px";
+        textarea.style.left = "-10000px";
         textarea.style.top = "0";
         textarea.style.width = "1px";
         textarea.style.height = "1px";
         textarea.style.opacity = "0";
+        textarea.style.pointerEvents = "none";
 
         document.body.appendChild(textarea);
         textarea.focus();
@@ -267,19 +319,17 @@ def copy_html_button(html_output: str):
         textarea.setSelectionRange(0, textarea.value.length);
 
         const copied = document.execCommand("copy");
-        document.body.removeChild(textarea);
+        textarea.remove();
 
         if (!copied) {{
-            throw new Error("The browser rejected the copy operation.");
+            throw new Error("Browser denied clipboard access.");
         }}
     }}
 
     button.addEventListener("click", async function() {{
-        const originalText = "📋 Copy HTML Code";
-
         button.disabled = true;
-        button.textContent = "⏳ Copying...";
         button.classList.remove("success", "error");
+        button.textContent = "⏳ Copying...";
         status.textContent = "";
 
         try {{
@@ -287,23 +337,25 @@ def copy_html_button(html_output: str):
 
             button.textContent = "✅ HTML Copied!";
             button.classList.add("success");
-            status.textContent = "Complete HTML code copied to your clipboard.";
+            status.textContent = "Complete HTML copied to clipboard.";
 
-            window.setTimeout(function() {{
-                button.textContent = originalText;
+            setTimeout(function() {{
+                button.textContent = "📋 Copy HTML Code";
                 button.classList.remove("success");
                 button.disabled = false;
                 status.textContent = "";
             }}, 2200);
+
         }} catch (error) {{
             console.error("Copy HTML failed:", error);
 
             button.textContent = "❌ Copy Failed";
             button.classList.add("error");
-            status.textContent = "Copy was blocked by the browser. Use the HTML Source box below.";
+            status.textContent =
+                "Browser blocked copying. Use Download HTML instead.";
 
-            window.setTimeout(function() {{
-                button.textContent = originalText;
+            setTimeout(function() {{
+                button.textContent = "📋 Copy HTML Code";
                 button.classList.remove("error");
                 button.disabled = false;
             }}, 3500);
@@ -311,15 +363,15 @@ def copy_html_button(html_output: str):
     }});
 }})();
 </script>
+</body>
+</html>
 """
 
-    # Streamlit's current st.html API can execute trusted JavaScript when
-    # explicitly enabled. Unlike an iframe, this runs in the main page.
-    st.html(
+    components.html(
         component_html,
-        unsafe_allow_javascript=True,
+        height=72,
+        scrolling=False,
     )
-
 
 def build_quiz_html(quiz_data: dict) -> str:
     """
