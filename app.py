@@ -382,7 +382,7 @@ def build_quiz_html(quiz_data: dict) -> str:
     to calculate the score.
     """
 
-    title = quiz_data.get("title") or "Converted Quiz"
+    title = "Mock Test"
     difficulty = quiz_data.get("difficulty") or "practice"
     questions = quiz_data.get("questions") or []
 
