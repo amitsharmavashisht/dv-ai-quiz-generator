@@ -32,7 +32,10 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("dvq")
 
-STATIC = Path(__file__).parent / "static" / "index.html"
+STATIC_DIR = Path(__file__).parent / "static"
+STATIC = STATIC_DIR / "index.html"
+EMBED = STATIC_DIR / "embed.js"
+
 VALID_DIFFICULTY = {"easy", "medium", "hard"}
 VALID_SOURCES = {"text", "file", "url", "youtube"}
 
@@ -108,6 +111,17 @@ def home():
         return FileResponse(STATIC)
     return JSONResponse({"status": "ok", "hint": "static/index.html is missing"})
 
+@app.get("/embed.js", include_in_schema=False)
+def embed_script():
+    if EMBED.exists():
+        return FileResponse(
+            EMBED,
+            media_type="application/javascript"
+        )
+    return JSONResponse(
+        {"error": "embed.js is missing"},
+        status_code=404
+    )
 
 @app.get("/health")
 def health() -> JSONResponse:
