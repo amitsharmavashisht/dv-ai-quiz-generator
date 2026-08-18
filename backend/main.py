@@ -123,7 +123,7 @@ def embed_script():
         status_code=404
     )
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health() -> JSONResponse:
     state = providers.health()
     body = {
